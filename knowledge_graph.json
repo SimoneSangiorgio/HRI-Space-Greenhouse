@@ -1,0 +1,66 @@
+{
+  "Commander": {
+    "preferred_tasks": [],
+    "task_specific_preferences": {
+      "check_resources": {
+        "sensors_of_interest": [],
+        "notes": []
+      },
+      "run_diagnostics": {
+        "subsystems_of_interest": [],
+        "notes": []
+      }
+    },
+    "equipment_notes": {
+      "water_tank_1": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      },
+      "water_tank_2": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      },
+      "solar_storage": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      },
+      "tiago_robot_battery": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      }
+    }
+  },
+  "GreenhouseEmployee": {
+    "preferred_tasks": [],
+    "task_specific_preferences": {
+      "get_greenhouse_status": {
+        "plants_of_interest": [],
+        "notes": []
+      },
+      "water_plants": {
+        "notes": []
+      }
+    },
+    "equipment_notes": {
+      "plant_1_basil": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      },
+      "plant_2_lemon": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      },
+      "plant_3_moss": {
+        "last_check_status": null,
+        "notes_positive": [],
+        "notes_negative": []
+      }
+    }
+  }
+}

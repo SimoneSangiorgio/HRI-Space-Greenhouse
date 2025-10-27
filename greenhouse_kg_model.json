@@ -1,0 +1,41 @@
+{
+  "user_profiles": {
+    "Commander": {
+      "task_history": {},
+      "preferences": {
+        "check_resources": {
+          "sensors_of_interest": []
+        }
+      }
+    },
+    "GreenhouseEmployee": {
+      "task_history": {},
+      "preferences": {
+        "get_greenhouse_status": {
+          "sensors_of_interest": []
+        }
+      }
+    }
+  },
+  "live_data": {
+    "tiago_robot": {"battery_percent": null},
+    "water_tank_1": {"level_percent": null},
+    "water_tank_2": {"level_percent": null},
+    "solar_storage": {"energy_percent": null},
+    "env_sensors": {"temperature_celsius": null, "humidity_percent": null}
+  },
+  "world_model": {
+    "tasks": [
+      {"id": "check_resources", "name": "Check Resources"},
+      {"id": "get_greenhouse_status", "name": "Get Greenhouse Status"},
+      {"id": "cleaning", "name": "Cleaning"}
+    ],
+    "sensors": [
+      {"id": "tiago_robot", "name": "Robot Battery"},
+      {"id": "water_tank_1", "name": "Water Tank 1"},
+      {"id": "water_tank_2", "name": "Water Tank 2"},
+      {"id": "solar_storage", "name": "Solar Energy Storage"},
+      {"id": "env_sensors", "name": "Greenhouse Temperature and Humidity"}
+    ]
+  }
+}

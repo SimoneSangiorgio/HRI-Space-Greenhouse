@@ -1,0 +1,37 @@
+{
+  "Commander": {
+    "preferred_tasks": [],
+    "task_specific_preferences": {
+      "check_resources": {
+        "sensors_of_interest": [],
+        "notes": []
+      },
+      "run_diagnostics": {
+        "subsystems_of_interest": [],
+        "notes": []
+      }
+    },
+    "equipment_feedback": {
+      "water_tank_1": {
+        "notes": []
+      },
+      "solar_storage": {
+        "notes": []
+      }
+    }
+  },
+  "GreenhouseEmployee": {
+    "preferred_tasks": [],
+    "task_specific_preferences": {
+      "get_greenhouse_status": {
+        "plants_of_interest": [],
+        "notes": []
+      }
+    },
+    "equipment_feedback": {
+      "plant_1_basil": {
+        "notes": []
+      }
+    }
+  }
+}
