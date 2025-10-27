@@ -82,7 +82,7 @@ class KnowledgeGraphManager:
         prefs = profile.get("task_preferences")
         if not prefs: return None, 0
         preferred = max(prefs, key=prefs.get)
-        return preferred, prefs[preferred]
+        return preferred, prefs.get(preferred, 0)
         
     def get_world_knowledge(self):
         return self.kg.get("world_knowledge", {})
