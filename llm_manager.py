@@ -50,6 +50,10 @@ def _generate_persona_instructions(user_profile):
         base_persona = "You are SERRA, a friendly and patient guide robot. Your tone is simple and engaging."
 
     if user_profile:
+        interaction_count = user_profile.get("interaction_count", 0)
+        if interaction_count > 5:
+            base_persona += f" You have interacted with this {role} multiple times. You are familiar with their preferences."
+
         verbosity = user_profile.get("interaction_style", {}).get("verbosity_preference", "normal")
         if verbosity == "brief": base_persona += " This user prefers brief responses."
         elif verbosity == "verbose": base_persona += " This user appreciates detailed responses."
@@ -72,25 +76,50 @@ def _generate_intent_parsing_prompt(user_profile=None, context=None):
     if context and context.get('last_intent') == 'list_capabilities':
         contextual_hint = "CRITICAL CONTEXT: You have JUST listed your capabilities. The user's next input is highly likely to be a command selecting one of those tasks. Prioritize identifying a specific, actionable task."
 
+    if context and context.get('last_intent_status') == 'failed':
+        contextual_hint += f"\nCRITICAL CONTEXT: The last task '{context.get('last_intent')}' failed. The user might be asking about the failure or trying a different approach."
+
+    # =================== MODIFICA CHIAVE ===================
+    # Aggiunta una regola esplicita per distinguere i tipi di raccomandazione.
+    # Questo è il cuore della correzione.
+    recommendation_rule = """
+CRITICAL RULE ON RECOMMENDATIONS:
+- If the user asks for a recommendation about a ROBOTIC TASK or "what to do next", classify the intent as 'ask_for_recommendation'.
+- If the user asks for a recommendation about INFORMATION or an OBJECT (e.g., "recommend a plant", "recommend a book"), classify the intent as 'general_query'. The robot will answer using its general knowledge.
+"""
+    # =======================================================
+
     return f"""
 {persona}
 Your task is to interpret the user's LATEST request and classify it.
 {contextual_hint}
+{recommendation_rule}
 Available "meta" intents: 'ask_for_recommendation', 'general_query', 'query_user_profile', 'query_rules_and_permissions', 'list_capabilities', 'acknowledgement'.
 Respond ONLY with a JSON object: {{ "intent": "...", "original_request": "..." }}
 """
 
 def _generate_recommendation_prompt(user_profile=None):
     persona = _generate_persona_instructions(user_profile)
+    
+    user_context_hint = ""
+    if user_profile:
+        prefs = user_profile.get("task_preferences", {})
+        if prefs:
+            preferred_task = max(prefs, key=prefs.get)
+            user_context_hint = f"USER PROFILE HINT: This user frequently performs '{preferred_task}'. If relevant, prioritize suggestions related to this task or category."
+
     return f"""
 {persona}
-Suggest ONE actionable task from this list: {', '.join(ALL_TASKS_LIST)}.
+{user_context_hint}
+Suggest ONE actionable robotic task from this list: {', '.join(ALL_TASKS_LIST)}.
+Base your suggestion on the current system context and the user's likely goals.
+If no action is applicable or the user's goal cannot be met by a task, respond with:
+TASK: none
+REASON: <Your explanation.>
+
 CRITICAL: Respond in this exact format:
 TASK: <task_name_from_list>
 REASON: <Your concise explanation.>
-If no action is applicable, respond with:
-TASK: none
-REASON: <Your explanation.>
 """
 
 def _generate_conversational_prompt(user_profile=None):
@@ -98,6 +127,7 @@ def _generate_conversational_prompt(user_profile=None):
     return f"""
 {persona}
 Answer the user's LATEST question. Use the RECENT CONVERSATION HISTORY to avoid repeating information.
+Use your general knowledge combined with the provided context to provide a helpful and relevant response.
 CRITICAL: Do not start your response with your name or any prefix like 'SERRA:'. Just provide the response directly.
 """
 
@@ -113,7 +143,6 @@ class LLMManager:
     @with_timeout(10)
     def parse_intent(self, user_input, context=None, user_profile=None, history=None):
         try:
-            # Controllo hardcoded per meta-intenti semplici e affidabili
             user_input_lower = user_input.lower().strip()
             if user_input_lower in ["ok", "okay", "got it", "thanks", "thank you", "perfect", "fine", "all right, go ahead", "good robot", "yes", "yep", "y"]:
                 return {"intent": "acknowledgement", "is_question": False, "confidence": 1.0, "original_request": user_input}
@@ -122,7 +151,6 @@ class LLMManager:
             
             if not self.client: return {"intent": "error", "reason": "LLM client not initialized."}
             
-            # Se nessun match, usa l'LLM con il contesto completo
             prompt = _generate_intent_parsing_prompt(user_profile, context)
             messages = [{"role": "system", "content": prompt}]
             full_context_str = _build_context_string(context, history)

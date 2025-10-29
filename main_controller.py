@@ -6,6 +6,7 @@ import json
 import random
 import threading
 from collections import deque
+from datetime import datetime
 from std_msgs.msg import String
 from kg_manager import KnowledgeGraphManager
 from llm_manager import LLMManager, ALL_TASKS_LIST, TASKS_ROBOT_GREENHOUSE
@@ -87,26 +88,64 @@ class MainRobotController:
             elif self.current_user_role == "Scientist": welcome_message = f"Dr. {name_input}, a pleasure to collaborate. System data is available."
             else: welcome_message = f"Hello {name_input}! I'm SERRA. Welcome to the greenhouse!"
         else:
-            if self.current_user_role == "Commander": welcome_message = f"Commander {name_input}, welcome back. SERRA ready for tasking."
-            elif self.current_user_role == "Scientist": welcome_message = f"Welcome back, Dr. {name_input}. Ready to resume our analysis?"
-            else: welcome_message = f"Hi {name_input}, it's great to see you again!"
+            last_seen_str = self.current_user_profile.get("last_seen")
+            if last_seen_str:
+                days_since = (datetime.now() - datetime.fromisoformat(last_seen_str)).days
+                if days_since > 7:
+                    welcome_message = f"Welcome back, {self.current_user_role} {name_input}. It has been a while. "
+                else:
+                    welcome_message = f"Welcome back, {self.current_user_role} {name_input}. "
+            
+            if self.current_user_role == "Commander": welcome_message += "SERRA ready for tasking."
+            elif self.current_user_role == "Scientist": welcome_message += "Ready to resume our analysis?"
+            else: welcome_message += "It's great to see you again!"
         self.say_and_print(welcome_message, is_robot_response=True)
 
         preferred_task, count = self.kg.get_preferred_task(self.current_user_id)
-        if count > 2 and preferred_task == "general_query":
+        
+        # =================== MODIFICA 1: LOGICA SUGGERIMENTO PROATTIVO ===================
+        # Consenti il suggerimento di 'general_query' per ruoli specifici.
+        is_routine_query = preferred_task == "general_query" and self.current_user_role in ["Commander", "Scientist"]
+        is_preferred_action = preferred_task and preferred_task not in ["acknowledgement", "general_query"]
+
+        if count > 3 and (is_routine_query or is_preferred_action):
             prompt = ""
-            if self.current_user_role == "Commander": prompt = "Standard procedure is a general status report. Shall I proceed?"
-            elif self.current_user_role == "Scientist": prompt = "Would you like to begin with a full data overview, as is customary?"
-            if prompt and self.get_confirmation(prompt):
-                self.execute_command({"intent": "general_query", "original_request": "Provide a full status report."})
+            if is_routine_query:
+                prompt = "Standard procedure is a general status report. Shall I proceed?"
+            else: # is_preferred_action
+                prompt = f"I notice you often perform '{preferred_task}'. Would you like me to start with that?"
+            
+            if self.get_confirmation(prompt):
+                self.execute_command({"intent": preferred_task, "original_request": f"Start my usual task: {preferred_task}"})
+        # =================================================================================
 
     def check_for_proactive_alerts(self):
         self.say_and_print("\nPerforming system status check...", is_robot_response=True)
         time.sleep(1)
-        self.say_and_print("All systems nominal. Awaiting command.", is_robot_response=True)
+        
+        alerts = []
+        with self.data_lock:
+            battery_level = self.robot_sensors_data.get("battery_percent")
+        
+        world_knowledge = self.kg.get_world_knowledge()
+        critical_thresholds = world_knowledge.get("critical_thresholds", {})
+        battery_threshold = critical_thresholds.get("battery_percent", 20)
+
+        if battery_level and battery_level < battery_threshold:
+            alert_msg = f"CRITICAL ALERT: Battery level is at {battery_level}%, which is below the {battery_threshold}% threshold."
+            alerts.append(alert_msg)
+            if self.get_confirmation(f"{alert_msg} Shall I navigate to the charging station?"):
+                self.execute_command({"intent": "navigate_to_charging_station", "original_request": "Charge battery due to critical alert."})
+
+        if not alerts:
+            self.say_and_print("All systems nominal. Awaiting command.", is_robot_response=True)
 
     def main_loop(self):
         while not rospy.is_shutdown():
+            if self.current_task_thread and self.current_task_thread.is_alive():
+                time.sleep(0.5)
+                continue
+
             user_command_text = input(f"{self.current_user_id} > ")
             self.conversation_history.append({"role": "user", "content": user_command_text})
             
@@ -123,26 +162,25 @@ class MainRobotController:
             user_command_lower = user_command_text.lower()
 
             # --- GERARCHIA DI CONTROLLO ---
-            # 1. COMANDI CRITICI E DI NAVIGAZIONE
             if any(phrase in user_command_lower for phrase in ["stop", "halt", "cancel"]):
                 parsed_command = {"intent": "stop_current_task", "original_request": user_command_text}
             elif any(phrase in user_command_lower for phrase in ["remember me", "who am i", "my profile"]):
                 parsed_command = {"intent": "query_user_profile", "original_request": user_command_text}
-            # --- NUOVA REGOLA PER I PERMESSI ---
             elif any(phrase in user_command_lower for phrase in ["can i", "am i allowed", "is it okay", "play with"]):
                 parsed_command = {"intent": "query_rules_and_permissions", "original_request": user_command_text}
 
-            # 2. MATCHING DIRETTO DEI TASK
+            # =================== MODIFICA 2: MATCHING DIRETTO MENO AGGRESSIVO ===================
             if not parsed_command:
                 user_keywords = set(user_command_lower.replace("ok", "").replace("please", "").strip().split())
                 for task in ALL_TASKS_LIST:
                     task_keywords = set(task.split('_'))
-                    if user_keywords.intersection(task_keywords):
+                    # Richiede che almeno 2 parole chiave corrispondano, o una corrispondenza completa
+                    if len(user_keywords.intersection(task_keywords)) >= 2 or user_keywords == task_keywords:
                         parsed_command = {"intent": task, "original_request": user_command_text}
                         rospy.loginfo(f"Direct task match found: {task}")
                         break
+            # ======================================================================================
             
-            # 3. LLM COME FALLBACK
             if not parsed_command:
                 parsed_command = self.llm.parse_intent(
                     user_command_text, context=self.conversation_context, 
@@ -159,10 +197,14 @@ class MainRobotController:
             if intent not in ["acknowledgement", "stop_current_task"]: 
                 self.kg.log_interaction(self.current_user_id, intent)
             
-            is_long_running_task = intent in ["clean_floor_and_pathways", "navigate_to_charging_station", "execute_precision_watering"]
+            self.conversation_context = {'last_intent': intent, 'last_intent_status': 'running'}
+
+            is_long_running_task = intent in ["clean_floor_and_pathways", "navigate_to_charging_station", "execute_precision_watering", "map_and_localize"]
             if is_long_running_task:
                 if self.current_task_thread and self.current_task_thread.is_alive():
                     self.say_and_print("Cannot start a new task while another is running.", is_robot_response=True)
+                    self.conversation_context['last_intent_status'] = 'failed'
+                    self.conversation_context['failure_reason'] = 'task_already_running'
                     return
                 self.task_stop_event.clear()
                 self.current_task_thread = threading.Thread(target=handler_function, args=(parsed_command,))
@@ -170,9 +212,12 @@ class MainRobotController:
             else:
                 handler_function(parsed_command)
 
-            self.conversation_context = {'last_intent': intent}
-        elif intent == "unknown": self.say_and_print("Command not understood. Please rephrase.", is_robot_response=True)
-        else: self.say_and_print(f"Error: {parsed_command.get('reason', 'Unknown')}", is_robot_response=True)
+        elif intent == "unknown": 
+            self.say_and_print("Command not understood. Please rephrase.", is_robot_response=True)
+            self.conversation_context = {'last_intent': 'unknown'}
+        else: 
+            self.say_and_print(f"Error: {parsed_command.get('reason', 'Unknown')}", is_robot_response=True)
+            self.conversation_context = {'last_intent': 'error', 'reason': parsed_command.get('reason', 'Unknown')}
 
     def generate_and_speak_response(self, question, context_data):
         response = self.llm.get_conversational_response(
@@ -186,6 +231,7 @@ class MainRobotController:
             self.say_and_print("Stop command received. Terminating current task...", is_robot_response=True)
             self.task_stop_event.set()
             self.current_task_thread.join(timeout=2.0)
+            self.conversation_context['last_intent_status'] = 'cancelled'
         else:
             self.say_and_print("No task is currently running.", is_robot_response=True)
 
@@ -195,10 +241,12 @@ class MainRobotController:
         for i in range(5):
             if self.task_stop_event.is_set():
                 self.say_and_print(f"Task '{task_name}' cancelled by user.", is_robot_response=True)
+                self.conversation_context['last_intent_status'] = 'cancelled'
                 return
             self.say_and_print(f"...{task_name} in progress ({i+1}/5)...")
             time.sleep(1)
         self.say_and_print(f"Task '{task_name}' complete.", is_robot_response=True)
+        self.conversation_context['last_intent_status'] = 'success'
 
     def handle_acknowledgement(self, command):
         responses = {
@@ -260,10 +308,30 @@ class MainRobotController:
             self.say_and_print(f"\n--- {category.replace('_', ' ').upper()} ---")
             for task in tasks: self.say_and_print(f"- {task}")
     
-    def handle_check_battery(self, command): self.generate_and_speak_response("Report battery status.", {"battery_percent": self.robot_sensors_data.get('battery_percent', 'N/A')})
-    def handle_read_environment(self, command): self.generate_and_speak_response(command.get("original_request"), {"sensor_data": self.robot_sensors_data})
-    def handle_image_analysis(self, command): self.generate_and_speak_response(command.get("original_request"), {"plants_info": self.serra_state_data.get('plants_info', [])})
-    def handle_monitor_tanks(self, command): self.generate_and_speak_response("Report water tank status.", {'tanks': self.serra_state_data})
+    def handle_check_battery(self, command): 
+        self.generate_and_speak_response("Report battery status.", {"battery_percent": self.robot_sensors_data.get('battery_percent', 'N/A')})
+    def handle_read_environment(self, command): 
+        self.generate_and_speak_response(command.get("original_request"), {"sensor_data": self.robot_sensors_data})
+    
+    # =================== MODIFICA 3: GESTIONE INTENTO IMPLICITO ===================
+    def handle_image_analysis(self, command):
+        original_request = command.get("original_request", "").lower()
+        # Se la richiesta non è una domanda ma un comando, procedi
+        is_command = not any(q in original_request for q in ["what", "how", "can you"])
+        
+        self.generate_and_speak_response(original_request, {"plants_info": self.serra_state_data.get('plants_info', [])})
+
+        if is_command:
+            time.sleep(0.5)
+            if self.get_confirmation("Shall I proceed with a detailed image analysis now?"):
+                # Simula l'esecuzione del task
+                self.handle_placeholder({"intent": "image_analysis_for_health"})
+            else:
+                self.say_and_print("Understood. Awaiting next command.", is_robot_response=True)
+    # ==============================================================================
+
+    def handle_monitor_tanks(self, command): 
+        self.generate_and_speak_response("Report water tank status.", {'tanks': self.serra_state_data})
     def handle_query_user_profile(self, command):
         preferred_task, _ = self.kg.get_preferred_task(self.current_user_id)
         profile_summary = {"User ID": self.current_user_id, "Role": self.current_user_role, "Interaction Count": self.current_user_profile.get("interaction_count", 0), "Learned Style": self.current_user_profile.get("interaction_style", {}).get("verbosity_preference", "normal"), "Frequent Task": preferred_task or "None"}
