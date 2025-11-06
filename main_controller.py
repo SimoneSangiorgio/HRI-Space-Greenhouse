@@ -436,8 +436,23 @@ class MainRobotController:
         self.conversation_context['last_intent_status'] = 'success'
 
 if __name__ == '__main__':
+    controller = None  # Define controller here to access it in the finally block
     try:
-        MainRobotController().run()
+        controller = MainRobotController()
+        controller.run()
     except (rospy.ROSInterruptException, KeyboardInterrupt):
-        rospy.loginfo("Shutting down controller.")
-        pass
+        # This will catch Ctrl+C cleanly
+        rospy.loginfo("Shutdown signal received.")
+    finally:
+        # This block will ALWAYS run, whether the program exits cleanly or via Ctrl+C
+        rospy.loginfo("Initiating final shutdown sequence...")
+        if controller and controller.listener:
+            # Tell the whisper manager to clean itself up
+            controller.listener.shutdown()
+        
+        if controller and controller.kg:
+            # Ensure the knowledge graph is saved
+            rospy.loginfo("Saving final knowledge graph state...")
+            controller.kg.save_kg()
+            
+        rospy.loginfo("Controller has been shut down.")

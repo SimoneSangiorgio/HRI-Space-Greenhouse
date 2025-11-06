@@ -1,84 +1,104 @@
 # whisper_manager.py
+# FINAL, ROBUST VERSION using the proven callback-based audio stream logic.
 
-import whisper
-import sounddevice as sd
-from scipy.io.wavfile import write
-import numpy as np
 import rospy
+import sounddevice as sd
+import numpy as np
+from faster_whisper import WhisperModel
+import threading
 
 class WhisperManager:
-    def __init__(self, model_size="tiny"):
+    def __init__(self, model_size="base"):
         """
-        Initializes the WhisperManager.
-        Args:
-            model_size (str): The size of the Whisper model to use 
-                              (e.g., "tiny", "base", "small", "medium", "large").
-                              Smaller models are faster but less accurate.
+        Initializes the WhisperManager using faster-whisper and a robust,
+        callback-based audio stream to prevent hardware lock issues.
         """
-        rospy.loginfo(f"Loading Whisper model '{model_size}'...")
+        rospy.loginfo("Initializing WhisperManager (Robust Callback Edition)...")
+        rospy.loginfo(f"Loading faster-whisper model '{model_size}'...")
         try:
-            self.model = whisper.load_model(model_size)
-            rospy.loginfo("Whisper model loaded successfully.")
+            # "base" is a great balance of speed and accuracy.
+            self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+            rospy.loginfo("Faster-whisper model loaded successfully.")
         except Exception as e:
-            rospy.logerr(f"Failed to load Whisper model: {e}")
-            rospy.logerr("Please ensure you have a stable internet connection for the first download, and that you have enough memory.")
+            rospy.logerr(f"Failed to load faster-whisper model: {e}")
             self.model = None
 
-        self.samplerate = 16000  # 16kHz is standard for Whisper
+        self.samplerate = 16000
         self.channels = 1
-        self.temp_filename = "temp_recording.wav"
+        self.is_recording = False
+        self.recorded_frames = []
+        self.stream = None
+        self.lock = threading.Lock() # To prevent race conditions
 
-    def record_audio(self, duration=5):
-        """
-        Records audio from the microphone for a fixed duration.
-        """
-        rospy.loginfo(f"Recording for {duration} seconds...")
-        recording = sd.rec(int(duration * self.samplerate), samplerate=self.samplerate, channels=self.channels, dtype='int16')
-        sd.wait()  # Wait until recording is finished
-        rospy.loginfo("Recording finished.")
-        return recording
+    def _audio_callback(self, indata, frames, time, status):
+        """This function is called by a separate thread for each new audio chunk."""
+        if status:
+            rospy.logwarn(f'Sounddevice status: {status}')
+        if self.is_recording:
+            self.recorded_frames.append(indata.copy())
 
-    def save_recording(self, recording_data):
+    def listen_for_command(self, duration=5):
         """
-        Saves the recorded audio data to a WAV file.
-        """
-        write(self.temp_filename, self.samplerate, recording_data)
-        rospy.loginfo(f"Recording saved to {self.temp_filename}")
-
-    def transcribe_audio(self):
-        """
-        Transcribes the saved audio file using the Whisper model.
+        Orchestrates the recording and transcription using a reliable callback stream.
+        This function blocks for the duration of the recording.
         """
         if not self.model:
-            rospy.logerr("Cannot transcribe, Whisper model not loaded.")
-            return ""
-            
-        rospy.loginfo("Transcribing audio...")
+            rospy.logerr("Cannot listen, whisper model not loaded.")
+            return "Whisper model is not available."
+
+        with self.lock:
+            if self.is_recording:
+                rospy.logwarn("Already recording. Request ignored.")
+                return ""
+
+            self.recorded_frames = []
+            self.is_recording = True
+        
+        rospy.loginfo(f"Recording for {duration} seconds...")
+
         try:
-            result = self.model.transcribe(self.temp_filename, fp16=False) # fp16=False for CPU
-            transcribed_text = result['text']
+            # The stream is created and started here
+            self.stream = sd.InputStream(
+                samplerate=self.samplerate,
+                channels=self.channels,
+                callback=self._audio_callback,
+                dtype='float32',
+                device=0 # IMPORTANT: Ensure this is your correct microphone index!
+            )
+            self.stream.start()
+            
+            # Wait for the specified duration
+            rospy.sleep(duration)
+
+        finally:
+            # This block guarantees that the stream is stopped and closed
+            if self.stream:
+                self.stream.stop()
+                self.stream.close()
+                self.stream = None
+            self.is_recording = False
+            rospy.loginfo("Recording finished and stream closed.")
+
+        # --- Process and Transcribe the collected audio frames ---
+        with self.lock:
+            if not self.recorded_frames:
+                rospy.logwarn("No audio frames were recorded.")
+                return ""
+            recording_data = np.concatenate(self.recorded_frames, axis=0)
+
+        rospy.loginfo("Transcribing audio from memory...")
+        try:
+            segments, info = self.model.transcribe(recording_data.flatten(), beam_size=5, language="en")
+            transcribed_text = "".join(segment.text for segment in segments).strip()
             rospy.loginfo(f"Transcription result: '{transcribed_text}'")
             return transcribed_text
         except Exception as e:
             rospy.logerr(f"An error occurred during transcription: {e}")
             return ""
 
-    def listen_for_command(self, duration=5):
-        """
-        A simple high-level function to record and transcribe a user command.
-        
-        MODIFIED: This function no longer prompts the user.
-        It immediately records audio.
-        """
-        if not self.model:
-            # This part can probably be simplified as the check is also in the main controller
-            rospy.logerr("Whisper model is not available.")
-            return "Whisper model is not available."
-
-        # THE INPUT PROMPT IS REMOVED FROM HERE
-        # input(">> Press Enter to start speaking, you will have 5 seconds...")
-        
-        recording = self.record_audio(duration)
-        self.save_recording(recording)
-        command = self.transcribe_audio()
-        return command.strip()
+    def shutdown(self):
+        """A cleanup method to ensure the stream is stopped if the app closes unexpectedly."""
+        rospy.loginfo("WhisperManager shutting down.")
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
