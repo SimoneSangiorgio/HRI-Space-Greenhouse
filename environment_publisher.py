@@ -105,9 +105,9 @@ def generate_serra_data():
         'stored_solar_energy_percent': round(current_solar_energy,2),
         # Dati originali sulle piante
         'plants_info': [
-            {'bay_id': 1, 'plant_name': 'basil', 'soil_moisture_percent': 20, 'leaf_appearance': 'seems all right'},
-            {'bay_id': 2, 'plant_name': 'lemon', 'soil_moisture_percent': 90, 'leaf_appearance': 'seems weak'},
-            {'bay_id': 3, 'plant_name': 'moss', 'soil_moisture_percent': 10, 'leaf_appearance': 'seems brown'}
+            {'plant_name': 'plant 1', 'soil_moisture_percent': 20, 'leaf_appearance': 'seems all right'},
+            {'plant_name': 'plant 2', 'soil_moisture_percent': 90, 'leaf_appearance': 'seems weak'},
+            {'plant_name': 'plant 3', 'soil_moisture_percent': 10, 'leaf_appearance': 'seems brown'}
         ]
     }
     return serra_data
@@ -133,7 +133,7 @@ def environment_publisher():
         sensors_pub.publish(json.dumps(sensors_dict))
         serra_pub.publish(json.dumps(serra_dict))
         
-        rospy.loginfo(f"Published Sensors: {json.dumps(sensors_dict)}")
+        #rospy.loginfo(f"Published Sensors: {json.dumps(sensors_dict)}")
         #rospy.loginfo(f"Published Serra State: {json.dumps(serra_dict)}")
         #rospy.loginfo("---")
 
