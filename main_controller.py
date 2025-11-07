@@ -49,7 +49,7 @@ class MainRobotController:
         
         self.console_lock = threading.Lock()
 
-        self.CONVERSATIONAL_INTENTS = ["greeting", "farewell", "small_talk", "contextual_question"]
+        self.CONVERSATIONAL_INTENTS = ["greeting", "farewell", "small_talk", "contextual_question", "general_query"]
 
         self.task_handlers = {
             "execute_task_sequence": self.handle_execute_task_sequence,
@@ -166,7 +166,7 @@ class MainRobotController:
         is_routine_query = preferred_task == "general_query" and self.current_user_role in ["Commander", "Scientist"]
         is_preferred_action = preferred_task and preferred_task not in ["acknowledgement", "general_query"]
 
-        if count > 3 and (is_routine_query or is_preferred_action):
+        if count > 5 and (is_routine_query or is_preferred_action):
             prompt = ""
             if is_routine_query:
                 prompt = "Standard procedure is a general status report. Shall I proceed?"
@@ -211,7 +211,7 @@ class MainRobotController:
             
             self.conversation_history.append({"role": "user", "content": user_command_text})
             
-            user_command_lower = user_command_text.lower()
+            user_command_lower = user_command_text.lower().strip()
             exit_keywords = ["exit", "quit", "end session"]
             
             if user_command_lower == "done" or any(keyword in user_command_lower for keyword in exit_keywords):
@@ -233,37 +233,42 @@ class MainRobotController:
 
             parsed_command = None
             
+            # --- LOGICA DI OVERRIDE FINALE E SEMPLIFICATA ---
+            status_keywords = ["status", "report", "system status", "general status"]
             remember_keywords = ["remember", "note", "recall", "keep in mind", "always", "ever", "forever"]
             suggest_keywords = ["suggest", "recommend", "what should i do", "what can you do for me"]
             
-            contains_remember_keyword = any(keyword in user_command_lower for keyword in remember_keywords)
+            found_remember_keyword = next((keyword for keyword in remember_keywords if keyword in user_command_lower), None)
+
+            is_status_query = user_command_lower in status_keywords
             contains_suggest_keyword = any(keyword in user_command_lower for keyword in suggest_keywords)
 
-            if contains_suggest_keyword:
+            # Gerarchia di override: Status > Suggest > Remember > LLM
+            if is_status_query:
+                rospy.loginfo("Status keyword detected. Forcing 'general_query' intent.")
+                parsed_command = {"intent": "general_query", "original_request": user_command_text}
+            
+            elif contains_suggest_keyword:
                  rospy.loginfo("Suggestion keyword detected. Forcing 'ask_for_recommendation' intent.")
-                 parsed_command = {
-                     "intent": "ask_for_recommendation",
-                     "original_request": user_command_text
-                 }
+                 parsed_command = {"intent": "ask_for_recommendation", "original_request": user_command_text}
+
+            elif found_remember_keyword:
+                rospy.loginfo(f"'{found_remember_keyword}' keyword detected. Forcing 'remember_fact' intent and performing manual extraction.")
+                # Estrazione manuale e robusta del fatto
+                # Prende tutto ciò che viene DOPO la parola chiave
+                fact_content = user_command_lower.split(found_remember_keyword, 1)[1]
+                fact_content = fact_content.strip().lstrip("that").lstrip("to").strip()
+                fact = fact_content.capitalize()
+                
+                parsed_command = {
+                    "intent": "remember_fact",
+                    "fact": fact,
+                    "original_request": user_command_text
+                }
+            
             else:
+                # Se nessun comando speciale è stato rilevato, usa l'LLM
                 parsed_command = self.llm.parse_intent(user_command_text, context=self.conversation_context, user_profile=self.current_user_profile, history=list(self.conversation_history))
-
-                if contains_remember_keyword and parsed_command.get('intent') != 'remember_fact':
-                    rospy.logwarn(f"LLM misclassified a 'remember' command as '{parsed_command.get('intent')}'. Overriding to 'remember_fact'.")
-                    
-                    fact = parsed_command.get('fact')
-                    if not fact:
-                        fact_content = user_command_text
-                        for keyword in remember_keywords:
-                            fact_content = fact_content.replace(keyword, "", 1)
-                        fact_content = fact_content.strip().lstrip("that").strip()
-                        fact = fact_content.capitalize()
-
-                    parsed_command = {
-                        "intent": "remember_fact",
-                        "fact": fact,
-                        "original_request": user_command_text
-                    }
             
             rospy.loginfo(f"Final parsed command: {parsed_command}")
             self.execute_command(parsed_command)

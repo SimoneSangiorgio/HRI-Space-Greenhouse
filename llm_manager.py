@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import os
 import json
 import rospy
@@ -84,42 +82,40 @@ def _generate_intent_parsing_prompt(user_profile=None, context=None):
     if context and context.get('last_intent_status') == 'failed':
         contextual_hint += f"\nCRITICAL CONTEXT: The last task '{context.get('last_intent')}' failed. The user might be asking about the failure or trying a different approach."
 
-    known_locations = ["start point", "plant 1", "plant 2", "harvesting zone", "maintenance area", "charging station", "water tank"]
-    location_hint = f"HINT: Known locations are: {', '.join(known_locations)}. 'plant 1' maps to 'plant 1', 'plant 2' to 'plant 2', etc."
+    # --- MODIFICA: Aggiornata la lista di location e il hint ---
+    known_locations = ["start point", "plant 1", "plant 2", "plant 3", "charging station", "water tank 1", "water tank 2"]
+    location_hint = f"HINT: Known locations are: {', '.join(known_locations)}."
+    # -------------------------------------------------------------
     
     predefined_sequences = ["general greenhouse check"]
     sequence_hint = f"HINT: Pre-defined sequences which can be triggered by name: {', '.join(predefined_sequences)}."
 
-    permission_rule = "CRITICAL RULE: If the user asks for permission (e.g., 'Can I...', 'Am I allowed to...'), the intent is ALWAYS 'query_rules_and_permissions', even if the sentence contains action words like 'go' or 'touch'."
-    
+    permission_rule = "CRITICAL RULE: If the user asks for permission to PERFORM AN ACTION THEMSELVES (e.g., 'Can I touch...'), the intent is 'query_rules_and_permissions'."
+    knowledge_question_rule = "CRITICAL RULE: Any open-ended question asking for information or explanation (e.g., 'What is...', 'Explain...', 'Why is...') MUST be classified as 'general_query'."
+
     intent_examples = f"""
 CRITICAL EXAMPLES:
-- User says: "watering plant 1" -> {{"intent": "execute_precision_watering", "target": "plant 1", "original_request": "watering plant 1"}}
+- User says: "can you explain some stuff about the greenhouse" -> {{"intent": "general_query", "original_request": "can you explain some stuff about the greenhouse"}}
+- User says: "watering plant 1 and plant 2" -> {{"intent": "execute_precision_watering", "targets": ["plant 1", "plant 2"], "original_request": "watering plant 1 and plant 2"}}
 - User says: "go to plant 1 and plant 2" -> {{"intent": "execute_task_sequence", "tasks": [{{"intent": "navigate_to_location", "location": "plant 1"}}, {{"intent": "navigate_to_location", "location": "plant 2"}}], "original_request": "go to plant 1 and plant 2"}}
 - User says: "can i go into the greenhouse?" -> {{"intent": "query_rules_and_permissions", "original_request": "can i go into the greenhouse?"}}
 - User says: "Perform a general greenhouse check" -> {{"intent": "execute_task_sequence", "sequence_name": "general greenhouse check", "original_request": "Perform a general greenhouse check"}}
 """
+    # -----------------------------------------------
 
     return f"""
 {persona}
 Your primary task is to interpret the user's LATEST request and convert it into a JSON object.
-Your goal is to identify the user's high-level intent.
 
 {permission_rule}
-CRITICAL RULE: If the user asks to go to MULTIPLE places (e.g., 'go to A and B'), you MUST use the 'execute_task_sequence' intent, creating a list of 'navigate_to_location' tasks.
-CRITICAL RULE: A complex action with a SINGLE target (e.g., 'water plant 1') should be parsed as a SINGLE high-level intent, NOT as a sequence.
+{knowledge_question_rule}
+CRITICAL RULE: A command to go to a SINGLE location is 'navigate_to_location', never a sequence.
+CRITICAL RULE: A command with MULTIPLE targets MUST be a sequence or use a 'targets' list.
 
 {location_hint}
 {sequence_hint}
 {contextual_hint}
 {intent_examples}
-
-Available Intent Categories:
-- Task Intents: 'navigate_to_location', 'execute_precision_watering', etc. Use for DIRECT COMMANDS to the robot for a SINGLE target.
-- Sequence Intents: 'execute_task_sequence'. Use for multi-step commands, commands with multiple targets, or named routines.
-- Permission & Rules Intents: 'query_rules_and_permissions'. Use when the user asks what THEY can do.
-- Conversational Intents: 'greeting', 'farewell', 'small_talk', 'contextual_question'.
-- Meta Intents: 'remember_fact', 'acknowledgement'.
 
 Respond ONLY with a valid JSON object.
 """
@@ -163,22 +159,36 @@ Do NOT add any text outside the JSON object.
 """
 
 def _generate_conversational_prompt(user_profile=None):
+    """Generates the system prompt for conversational responses, including explicit style guidance."""
     persona = _generate_persona_instructions(user_profile)
     style_guideline = ""
 
     if user_profile:
         style = user_profile.get("interaction_style", {})
         memory = user_profile.get("memory", {})
+        role = user_profile.get("profile", {}).get("role")
         
         if style.get("verbosity_preference") == 'brief':
-            style_guideline = "\nCRITICAL INSTRUCTION: The user prefers brief, to-the-point, schematic responses. Provide only the most essential information in a list or bullet points if possible."
-        
+            style_guideline = "\nCRITICAL STYLE INSTRUCTION: The user prefers brief, to-the-point, schematic responses. Provide only the most essential information."
+
         key_facts = memory.get("key_facts", [])
-        for fact in key_facts:
-            fact_lower = fact.lower()
+        for fact_str in key_facts:
+            if '=' in fact_str:
+                key, value = [x.strip() for x in fact_str.split('=', 1)]
+                if key == 'answer_length_limit':
+                    try:
+                        limit = int(value)
+                        style_guideline = f"\nCRITICAL, UNBREAKABLE RULE: Your response MUST NOT exceed {limit} characters in total. Be extremely concise."
+                        break
+                    except ValueError:
+                        pass
+            
+            fact_lower = fact_str.lower()
             if "short" in fact_lower or "schematic" in fact_lower or "brief" in fact_lower:
-                style_guideline = "\nCRITICAL INSTRUCTION: The user has explicitly requested short and schematic responses. Be as concise as possible. Use bullet points for status reports."
-                break
+                style_guideline = "\nCRITICAL STYLE INSTRUCTION: The user has explicitly requested short and schematic responses. Be as concise as possible. Use bullet points for status reports."
+
+        if role == "Commander" and style_guideline:
+            style_guideline += " When asked for a 'status', you MUST ONLY report anomalies or critical values (e.g., low battery, tank levels below 25%, plant issues). If everything is normal, simply state 'All systems nominal.'"
 
     return f"""
 {persona}

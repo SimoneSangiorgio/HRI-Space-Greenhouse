@@ -64,7 +64,8 @@ class KnowledgeGraphManager:
                     "plant 2": {"x": 7.3, "y": -1.3, "yaw": -45.0},
                     "plant 3": {"x": 5.2, "y": 0.0, "yaw": 0.0},
                     "charging station": {"x": 1.5, "y": 2.3, "yaw": -90.0},
-                    "water tank 1": {"x": 3.0, "y": 1.5, "yaw": 90.0}
+                    "water tank 1": {"x": 3.0, "y": 1.5, "yaw": 90.0},
+                    "water tank 2": {"x": 0.0, "y": 1.5, "yaw": 90.0}
                 },
                 "predefined_sequences": {
                     "general greenhouse check": {
