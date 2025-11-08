@@ -1,252 +1,37 @@
 {
     "user_profiles": {
-        "Commander_Simon": {
-            "profile": {
-                "role": "Commander",
-                "preferred_address": "by_role"
-            },
-            "interaction_style": {
-                "verbosity_preference": "brief",
-                "formality": "informal",
-                "tone_preference": "neutral_factual",
-                "proactivity_level": "reactive"
-            },
-            "relationship": {
-                "interaction_count": 11,
-                "relationship_level": 0.21000000000000008,
-                "trust_score": 0.5
-            },
-            "memory": {
-                "key_facts": [
-                    "I would like the status to  be communicated in a schematic form."
-                ],
-                "last_session_summary": "Confirmed the system status and acknowledged the completion of a task."
-            },
-            "task_preferences": {
-                "general_query": {
-                    "count": 6,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:37:44.541569"
-                },
-                "remember_fact": {
-                    "count": 1,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:11:04.787214"
-                },
-                "ask_for_recommendation": {
-                    "count": 2,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:38:07.808150"
-                },
-                "execute_precision_watering": {
-                    "count": 1,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:12:40.729750"
-                },
-                "check_battery_level": {
-                    "count": 1,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:38:29.360439"
-                }
-            },
-            "timestamps": {
-                "first_seen": "2025-10-29T20:08:47.901830",
-                "last_seen": "2025-10-29T20:40:13.506589"
-            },
-            "name_from_id": "Simon"
-        },
-        "Scientist_Ming": {
-            "profile": {
-                "role": "Scientist",
-                "preferred_address": "by_role"
-            },
-            "interaction_style": {
-                "verbosity_preference": "brief",
-                "formality": "formal",
-                "tone_preference": "collaborative",
-                "proactivity_level": "reactive"
-            },
-            "relationship": {
-                "interaction_count": 2,
-                "relationship_level": 0.12,
-                "trust_score": 0.5
-            },
-            "memory": {
-                "key_facts": [],
-                "last_session_summary": null
-            },
-            "task_preferences": {
-                "general_query": {
-                    "count": 2,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:15:44.357319"
-                }
-            },
-            "timestamps": {
-                "first_seen": "2025-10-29T20:14:37.628199",
-                "last_seen": "2025-10-29T20:16:02.287196"
-            },
-            "name_from_id": "Ming"
-        },
-        "Child_Adam": {
-            "profile": {
-                "role": "Child",
-                "preferred_address": "by_role"
-            },
-            "interaction_style": {
-                "verbosity_preference": "brief",
-                "formality": "informal",
-                "tone_preference": "collaborative",
-                "proactivity_level": "reactive"
-            },
-            "relationship": {
-                "interaction_count": 4,
-                "relationship_level": 0.14,
-                "trust_score": 0.5
-            },
-            "memory": {
-                "key_facts": [
-                    "Commander Simon's son",
-                    "Address the user as Prince Pdor, son of Kmer"
-                ],
-                "last_session_summary": null
-            },
-            "task_preferences": {
-                "remember_fact": {
-                    "count": 2,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:18:50.667471"
-                },
-                "query_rules_and_permissions": {
-                    "count": 1,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:17:50.541455"
-                },
-                "general_query": {
-                    "count": 1,
-                    "success_rate": 1.0,
-                    "last_used": "2025-10-29T20:19:29.785629"
-                }
-            },
-            "timestamps": {
-                "first_seen": "2025-10-29T20:17:01.711960",
-                "last_seen": "2025-10-29T20:20:16.258836"
-            },
-            "name_from_id": "Adam"
-        },
-        "General_Simon": {
-            "profile": {
-                "role": "General",
-                "preferred_address": "by_role"
-            },
-            "interaction_style": {
-                "verbosity_preference": "normal",
-                "formality": "neutral",
-                "tone_preference": "collaborative",
-                "proactivity_level": "reactive"
-            },
-            "relationship": {
-                "interaction_count": 0,
-                "relationship_level": 0.1,
-                "trust_score": 0.5
-            },
-            "memory": {
-                "key_facts": [],
-                "last_session_summary": "issued a command to check the system status."
-            },
-            "task_preferences": {},
-            "timestamps": {
-                "first_seen": "2025-10-29T20:37:08.341394",
-                "last_seen": "2025-10-29T20:37:08.341413"
-            },
-            "name_from_id": "Simon"
-        },
         "Commander_Filippo": {
             "profile": {
                 "role": "Commander",
                 "preferred_address": "by_role"
             },
             "interaction_style": {
-                "verbosity_preference": "verbose",
+                "verbosity_preference": "normal",
                 "formality": "formal",
                 "tone_preference": "neutral_factual",
                 "proactivity_level": "reactive"
             },
             "relationship": {
-                "interaction_count": 4,
-                "relationship_level": 0.14,
+                "interaction_count": 1,
+                "relationship_level": 0.11,
                 "trust_score": 0.5
             },
             "memory": {
                 "key_facts": [],
-                "last_session_summary": "queried the water reserve status."
+                "last_session_summary": null
             },
             "task_preferences": {
-                "general_query": {
-                    "count": 4,
+                "navigate_to_location": {
+                    "count": 1,
                     "success_rate": 1.0,
-                    "last_used": "2025-11-02T17:32:27.541989"
+                    "last_used": "2025-11-08T15:59:05.602288"
                 }
             },
             "timestamps": {
-                "first_seen": "2025-11-02T17:21:32.500316",
-                "last_seen": "2025-11-02T18:39:55.194919"
+                "first_seen": "2025-11-08T15:58:36.674076",
+                "last_seen": "2025-11-08T15:59:05.602299"
             },
             "name_from_id": "Filippo"
-        },
-        "Filippo_Dia": {
-            "profile": {
-                "role": "Filippo",
-                "preferred_address": "by_role"
-            },
-            "interaction_style": {
-                "verbosity_preference": "normal",
-                "formality": "neutral",
-                "tone_preference": "collaborative",
-                "proactivity_level": "reactive"
-            },
-            "relationship": {
-                "interaction_count": 0,
-                "relationship_level": 0.1,
-                "trust_score": 0.5
-            },
-            "memory": {
-                "key_facts": [],
-                "last_session_summary": null
-            },
-            "task_preferences": {},
-            "timestamps": {
-                "first_seen": "2025-11-02T18:00:58.808152",
-                "last_seen": "2025-11-02T18:00:58.808186"
-            },
-            "name_from_id": "Dia"
-        },
-        "Commander_Franco": {
-            "profile": {
-                "role": "Commander",
-                "preferred_address": "by_role"
-            },
-            "interaction_style": {
-                "verbosity_preference": "normal",
-                "formality": "formal",
-                "tone_preference": "neutral_factual",
-                "proactivity_level": "reactive"
-            },
-            "relationship": {
-                "interaction_count": 0,
-                "relationship_level": 0.1,
-                "trust_score": 0.5
-            },
-            "memory": {
-                "key_facts": [],
-                "last_session_summary": null
-            },
-            "task_preferences": {},
-            "timestamps": {
-                "first_seen": "2025-11-02T18:06:28.079153",
-                "last_seen": "2025-11-02T18:17:39.074112"
-            },
-            "name_from_id": "Franco"
         }
     },
     "world_knowledge": {
@@ -258,6 +43,109 @@
             "Food and drinks are strictly forbidden to maintain a sterile environment.",
             "Please always walk on the designated pathways and do not touch the plants unless authorized.",
             "This is a scientific research area, so running and shouting are not allowed."
-        ]
+        ],
+        "named_locations": {
+            "start point": {
+                "x": 0.0,
+                "y": 0.0,
+                "yaw": -40.0
+            },
+            "plant 1": {
+                "x": 7.3,
+                "y": 1.0,
+                "yaw": 40.0
+            },
+            "plant 2": {
+                "x": 7.3,
+                "y": -1.3,
+                "yaw": -45.0
+            },
+            "plant 3": {
+                "x": 5.2,
+                "y": 0.0,
+                "yaw": 0.0
+            },
+            "charging station": {
+                "x": 1.5,
+                "y": 2.3,
+                "yaw": -90.0
+            },
+            "water tank 1": {
+                "x": 3.0,
+                "y": 1.5,
+                "yaw": 90.0
+            },
+            "water tank 2": {
+                "x": 0.0,
+                "y": 1.5,
+                "yaw": 90.0
+            }
+        },
+        "predefined_sequences": {
+            "general greenhouse check": {
+                "description": "Performs a full patrol of the key inspection points and returns to the start.",
+                "tasks": [
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "plant 1"
+                    },
+                    {
+                        "intent": "simulated_action_image_analysis"
+                    },
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "plant 2"
+                    },
+                    {
+                        "intent": "simulated_action_image_analysis"
+                    },
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "plant 3"
+                    },
+                    {
+                        "intent": "simulated_action_image_analysis"
+                    },
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "start point"
+                    }
+                ]
+            }
+        },
+        "task_models": {
+            "execute_precision_watering": {
+                "description": "Fetches water and waters a specific target.",
+                "resource_location": "water tank 1",
+                "steps": [
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "<resource_location>"
+                    },
+                    {
+                        "intent": "simulated_action_pickup_water"
+                    },
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "<target_location>"
+                    },
+                    {
+                        "intent": "simulated_action_dispense_water"
+                    }
+                ]
+            },
+            "image_analysis_for_health": {
+                "description": "Navigates to a target to perform image analysis.",
+                "steps": [
+                    {
+                        "intent": "navigate_to_location",
+                        "location": "<target_location>"
+                    },
+                    {
+                        "intent": "simulated_action_image_analysis"
+                    }
+                ]
+            }
+        }
     }
 }

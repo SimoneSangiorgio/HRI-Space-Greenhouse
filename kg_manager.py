@@ -57,7 +57,49 @@ class KnowledgeGraphManager:
                     "Food and drinks are strictly forbidden to maintain a sterile environment.",
                     "Please always walk on the designated pathways and do not touch the plants unless authorized.",
                     "This is a scientific research area, so running and shouting are not allowed."
-                ]
+                ],
+                "named_locations": {
+                    "start point": {"x": 0.0, "y": 0.0, "yaw": -40.0},
+                    "plant 1": {"x": 7.3, "y": 1.0, "yaw": 40.0},
+                    "plant 2": {"x": 7.3, "y": -1.3, "yaw": -45.0},
+                    "plant 3": {"x": 5.2, "y": 0.0, "yaw": 0.0},
+                    "charging station": {"x": 1.5, "y": 2.3, "yaw": -90.0},
+                    "water tank 1": {"x": 3.0, "y": 1.5, "yaw": 90.0},
+                    "water tank 2": {"x": 0.0, "y": 1.5, "yaw": 90.0}
+                },
+                "predefined_sequences": {
+                    "general greenhouse check": {
+                        "description": "Performs a full patrol of the key inspection points and returns to the start.",
+                        "tasks": [
+                            {"intent": "navigate_to_location", "location": "plant 1"},
+                            {"intent": "simulated_action_image_analysis"},
+                            {"intent": "navigate_to_location", "location": "plant 2"},
+                            {"intent": "simulated_action_image_analysis"},
+                            {"intent": "navigate_to_location", "location": "plant 3"},
+                            {"intent": "simulated_action_image_analysis"},
+                            {"intent": "navigate_to_location", "location": "start point"}
+                        ]
+                    }
+                },
+                "task_models": {
+                    "execute_precision_watering": {
+                        "description": "Fetches water and waters a specific target.",
+                        "resource_location": "water tank 1",
+                        "steps": [
+                            {"intent": "navigate_to_location", "location": "<resource_location>"},
+                            {"intent": "simulated_action_pickup_water"},
+                            {"intent": "navigate_to_location", "location": "<target_location>"},
+                            {"intent": "simulated_action_dispense_water"},
+                        ]
+                    },
+                    "image_analysis_for_health": {
+                        "description": "Navigates to a target to perform image analysis.",
+                        "steps": [
+                            {"intent": "navigate_to_location", "location": "<target_location>"},
+                            {"intent": "simulated_action_image_analysis"}
+                        ]
+                    }
+                }
             }
         }
 
@@ -82,30 +124,12 @@ class KnowledgeGraphManager:
         if user_id not in profiles:
             role = user_id.split('_')[0] if '_' in user_id else "Unknown"
             profiles[user_id] = {
-                "profile": {
-                    "role": role,
-                    "preferred_address": "by_role"
-                },
-                "interaction_style": {
-                    "verbosity_preference": "normal",
-                    "formality": "formal" if role == "Commander" else "neutral",
-                    "tone_preference": "neutral_factual" if role == "Commander" else "collaborative",
-                    "proactivity_level": "reactive"
-                },
-                "relationship": {
-                    "interaction_count": 0,
-                    "relationship_level": 0.1,
-                    "trust_score": 0.5
-                },
-                "memory": {
-                    "key_facts": [],
-                    "last_session_summary": None
-                },
+                "profile": {"role": role, "preferred_address": "by_role"},
+                "interaction_style": {"verbosity_preference": "normal", "formality": "formal" if role == "Commander" else "neutral", "tone_preference": "neutral_factual" if role == "Commander" else "collaborative", "proactivity_level": "reactive"},
+                "relationship": {"interaction_count": 0, "relationship_level": 0.1, "trust_score": 0.5},
+                "memory": {"key_facts": [], "last_session_summary": None},
                 "task_preferences": {},
-                "timestamps": {
-                    "first_seen": datetime.now().isoformat(),
-                    "last_seen": datetime.now().isoformat()
-                }
+                "timestamps": {"first_seen": datetime.now().isoformat(), "last_seen": datetime.now().isoformat()}
             }
         return profiles[user_id]
 
@@ -116,7 +140,6 @@ class KnowledgeGraphManager:
 
     def log_interaction(self, user_id, intent, success=True):
         profile = self._get_or_create_user_profile(user_id)
-        
         prefs = profile.setdefault("task_preferences", {})
         task_log = prefs.setdefault(intent, {"count": 0, "success_rate": 1.0})
         total_runs = task_log.get("count", 0)
@@ -126,57 +149,39 @@ class KnowledgeGraphManager:
         task_log["count"] = new_total_runs
         task_log["success_rate"] = new_successes / new_total_runs if new_total_runs > 0 else 0
         task_log["last_used"] = datetime.now().isoformat()
-
         relationship = profile.setdefault("relationship", {})
         relationship["interaction_count"] = relationship.get("interaction_count", 0) + 1
         if success:
             relationship["relationship_level"] = min(1.0, relationship.get("relationship_level", 0.1) + 0.01)
         else:
             relationship["relationship_level"] = max(0.0, relationship.get("relationship_level", 0.1) - 0.05)
-
         profile["timestamps"]["last_seen"] = datetime.now().isoformat()
         rospy.loginfo(f"Logged interaction: {user_id} performed {intent} (Success: {success})")
 
     def update_interaction_style(self, user_id, command_text):
         profile = self._get_or_create_user_profile(user_id)
         style = profile.setdefault("interaction_style", {})
-        
         command_length = len(command_text.split())
-        if command_length <= 3:
-            style["verbosity_preference"] = 'brief'
-        elif command_length >= 8:
-            style["verbosity_preference"] = 'verbose'
-        else:
-            style["verbosity_preference"] = 'normal'
-
-        if any(word in command_text.lower() for word in ["please", "could you", "thank you"]):
-            style["formality"] = "formal"
-        elif command_length <= 2:
-            style["formality"] = "informal"
+        if command_length <= 3: style["verbosity_preference"] = 'brief'
+        elif command_length >= 8: style["verbosity_preference"] = 'verbose'
+        else: style["verbosity_preference"] = 'normal'
+        if any(word in command_text.lower() for word in ["please", "could you", "thank you"]): style["formality"] = "formal"
+        elif command_length <= 2: style["formality"] = "informal"
 
     def add_key_fact(self, user_id, fact_text):
         profile = self._get_or_create_user_profile(user_id)
         memory = profile.setdefault("memory", {})
         key_facts = memory.setdefault("key_facts", [])
-
         normalized_fact = fact_text.strip().lower()
-        
-        for existing_fact in key_facts:
-            if existing_fact.strip().lower() == normalized_fact:
-                rospy.loginfo(f"Fact '{fact_text}' already exists for user {user_id}. Not adding.")
-                return False
-
+        if any(existing_fact.strip().lower() == normalized_fact for existing_fact in key_facts):
+            rospy.loginfo(f"Fact '{fact_text}' already exists for user {user_id}. Not adding.")
+            return False
         key_facts.append(fact_text.strip())
-        
-        max_facts = 10
-        if len(key_facts) > max_facts:
-            key_facts.pop(0)
-
+        if len(key_facts) > 10: key_facts.pop(0)
         rospy.loginfo(f"Added key fact for {user_id}: '{fact_text}'")
         return True
 
     def update_session_summary(self, user_id, summary_text):
-        """Aggiorna il riassunto dell'ultima sessione per un utente."""
         profile = self._get_or_create_user_profile(user_id)
         memory = profile.setdefault("memory", {})
         memory["last_session_summary"] = summary_text
@@ -185,8 +190,7 @@ class KnowledgeGraphManager:
     def get_preferred_task(self, user_id):
         profile = self._get_or_create_user_profile(user_id)
         prefs = profile.get("task_preferences", {})
-        if not prefs:
-            return None, 0
+        if not prefs: return None, 0
         preferred = max(prefs.keys(), key=lambda k: prefs[k].get("count", 0), default=None)
         return preferred, prefs.get(preferred, {}).get("count", 0)
         
@@ -195,3 +199,22 @@ class KnowledgeGraphManager:
 
     def get_safety_rules(self):
         return self.kg.get("world_knowledge", {}).get("safety_rules", [])
+
+    def get_location_coords(self, location_name):
+        locations = self.kg.get("world_knowledge", {}).get("named_locations", {})
+        for name, coords in locations.items():
+            if name.lower() in location_name.lower():
+                return coords
+        return None
+
+    def get_predefined_sequence(self, sequence_name):
+        sequences = self.kg.get("world_knowledge", {}).get("predefined_sequences", {})
+        for name, sequence_data in sequences.items():
+            if name.lower() in sequence_name.lower():
+                return sequence_data["tasks"]
+        return None
+
+    def get_task_model(self, task_name):
+        """Retrieves a task model (template) by its name."""
+        models = self.kg.get("world_knowledge", {}).get("task_models", {})
+        return models.get(task_name)

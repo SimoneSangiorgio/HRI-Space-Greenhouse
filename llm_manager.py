@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import os
 import json
 import rospy
@@ -31,7 +29,7 @@ def with_timeout(seconds):
     return decorator
 
 TASKS_ROBOT_GREENHOUSE = {
-    "OPERATIONAL_MANAGEMENT": ["self_diagnostic_check", "check_battery_level", "navigate_to_charging_station", "map_and_localize", "plan_optimal_path", "stop_current_task"],
+    "OPERATIONAL_MANAGEMENT": ["self_diagnostic_check", "check_battery_level", "navigate_to_charging_station", "navigate_to_location", "map_and_localize", "plan_optimal_path", "stop_current_task", "execute_task_sequence"],
     "ENVIRONMENTAL_MONITORING": ["read_temperature_humidity_sensors", "read_CO2_level", "read_light_intensity", "read_soil_moisture_at_plant", "report_environmental_anomalies"],
     "PLANT_CARE": ["image_analysis_for_health", "detect_pests_and_diseases", "execute_precision_watering", "apply_targeted_nutrients", "execute_selective_pruning", "identify_and_harvest_ripe_fruit"],
     "MAINTENANCE_AND_LOGISTICS": ["clean_floor_and_pathways", "sanitize_robotic_arm_tools", "monitor_water_and_nutrient_tanks", "transport_harvest_to_storage"]
@@ -43,7 +41,6 @@ ALL_TASKS_LIST = _flatten_tasks(TASKS_ROBOT_GREENHOUSE)
 def _generate_persona_instructions(user_profile):
     if not user_profile:
         return "You are SERRA, a friendly and helpful service robot in a greenhouse."
-
     profile = user_profile.get("profile", {})
     style = user_profile.get("interaction_style", {})
     relationship = user_profile.get("relationship", {})
@@ -84,34 +81,43 @@ def _generate_intent_parsing_prompt(user_profile=None, context=None):
         contextual_hint = "CRITICAL CONTEXT: You have JUST listed your capabilities. The user's next input is highly likely to be a command selecting one of those tasks."
     if context and context.get('last_intent_status') == 'failed':
         contextual_hint += f"\nCRITICAL CONTEXT: The last task '{context.get('last_intent')}' failed. The user might be asking about the failure or trying a different approach."
-    intent_examples = """
+
+    # --- MODIFICA: Aggiornata la lista di location e il hint ---
+    known_locations = ["start point", "plant 1", "plant 2", "plant 3", "charging station", "water tank 1", "water tank 2"]
+    location_hint = f"HINT: Known locations are: {', '.join(known_locations)}."
+    # -------------------------------------------------------------
+    
+    predefined_sequences = ["general greenhouse check"]
+    sequence_hint = f"HINT: Pre-defined sequences which can be triggered by name: {', '.join(predefined_sequences)}."
+
+    permission_rule = "CRITICAL RULE: If the user asks for permission to PERFORM AN ACTION THEMSELVES (e.g., 'Can I touch...'), the intent is 'query_rules_and_permissions'."
+    knowledge_question_rule = "CRITICAL RULE: Any open-ended question asking for information or explanation (e.g., 'What is...', 'Explain...', 'Why is...') MUST be classified as 'general_query'."
+
+    intent_examples = f"""
 CRITICAL EXAMPLES:
-- User says: "Status" -> {"intent": "general_query", "original_request": "Status"}
-- User says: "Ok, thanks" -> {"intent": "acknowledgement", "original_request": "Ok, thanks"}
-- User says: "Recommend a task" -> {"intent": "ask_for_recommendation", "original_request": "Recommend a task"}
-- User says: "Remember that the nutrient mix for tomatoes is formula B" -> {"intent": "remember_fact", "fact": "The nutrient mix for tomatoes is formula B", "original_request": "Remember that the nutrient mix for tomatoes is formula B"}
-- User says: "I want to play" -> {"intent": "query_rules_and_permissions", "original_request": "I want to play"}
-- User says: "Can we play a game?" -> {"intent": "query_rules_and_permissions", "original_request": "Can we play a game?"}
+- User says: "can you explain some stuff about the greenhouse" -> {{"intent": "general_query", "original_request": "can you explain some stuff about the greenhouse"}}
+- User says: "watering plant 1 and plant 2" -> {{"intent": "execute_precision_watering", "targets": ["plant 1", "plant 2"], "original_request": "watering plant 1 and plant 2"}}
+- User says: "go to plant 1 and plant 2" -> {{"intent": "execute_task_sequence", "tasks": [{{"intent": "navigate_to_location", "location": "plant 1"}}, {{"intent": "navigate_to_location", "location": "plant 2"}}], "original_request": "go to plant 1 and plant 2"}}
+- User says: "can i go into the greenhouse?" -> {{"intent": "query_rules_and_permissions", "original_request": "can i go into the greenhouse?"}}
+- User says: "Perform a general greenhouse check" -> {{"intent": "execute_task_sequence", "sequence_name": "general greenhouse check", "original_request": "Perform a general greenhouse check"}}
 """
+    # -----------------------------------------------
+
     return f"""
 {persona}
-Your primary task is to interpret the user's LATEST request, classify its intent, and extract relevant information.
+Your primary task is to interpret the user's LATEST request and convert it into a JSON object.
 
+{permission_rule}
+{knowledge_question_rule}
+CRITICAL RULE: A command to go to a SINGLE location is 'navigate_to_location', never a sequence.
+CRITICAL RULE: A command with MULTIPLE targets MUST be a sequence or use a 'targets' list.
+
+{location_hint}
+{sequence_hint}
 {contextual_hint}
 {intent_examples}
 
-Available "meta" intents:
-- 'ask_for_recommendation': User asks for a suggestion on what task to perform.
-- 'general_query': User asks for information (e.g., status reports, data). THIS IS FOR CONCISE COMMANDS LIKE "Status".
-- 'remember_fact': User explicitly asks you to remember a piece of information. You MUST extract the information into a "fact" field.
-- 'list_capabilities': User asks what you can do.
-- 'acknowledgement': User gives a simple confirmation or thanks.
-- 'query_user_profile': User is asking about themselves.
-- 'query_rules_and_permissions': User is asking about rules, permissions, or wants to do something recreational like 'play'.
-
 Respond ONLY with a valid JSON object.
-- For 'remember_fact', the format MUST be: {{"intent": "remember_fact", "fact": "the complete fact to remember", "original_request": "..."}}
-- For all other intents, the format is: {{"intent": "...", "original_request": "..."}}
 """
 
 def _generate_recommendation_prompt(user_profile=None):
@@ -123,24 +129,71 @@ def _generate_recommendation_prompt(user_profile=None):
             preferred_task = max(prefs.keys(), key=lambda k: prefs[k].get("count", 0), default=None)
             if preferred_task:
                 user_context_hint = f"USER PROFILE HINT: This user frequently performs '{preferred_task}'. If relevant, prioritize suggestions related to this task or category."
+    
     return f"""
 {persona}
 {user_context_hint}
-Suggest ONE actionable robotic task from this list: {', '.join(ALL_TASKS_LIST)}.
-Base your suggestion on the current system context and the user's likely goals.
-If no action is applicable or the user's goal cannot be met by a task, respond with:
-TASK: none
-REASON: <Your explanation.>
+Your task is to propose ONE single, actionable robotic task based on the system context.
+The task MUST be chosen from this list: {', '.join(ALL_TASKS_LIST)}.
+You MUST respond with a valid JSON object in the following format.
 
-CRITICAL: Respond in this exact format:
-TASK: <task_name_from_list>
-REASON: <Your concise explanation.>
+CRITICAL FORMAT:
+{{
+  "task": {{ "intent": "task_name_from_list", "target": "relevant_location_if_needed" }},
+  "reason": "Your concise explanation for why this task is necessary."
+}}
+
+EXAMPLE: If the data shows low moisture for a plant at 'plant 2', your response should be:
+{{
+  "task": {{ "intent": "execute_precision_watering", "target": "plant 2" }},
+  "reason": "The soil moisture for the plant at plant 2 is critically low."
+}}
+
+If no action is necessary, respond with 'task' as null:
+{{
+  "task": null,
+  "reason": "All systems are operating within nominal parameters. No immediate action is required."
+}}
+
+Do NOT add any text outside the JSON object.
 """
 
 def _generate_conversational_prompt(user_profile=None):
+    """Generates the system prompt for conversational responses, including explicit style guidance."""
     persona = _generate_persona_instructions(user_profile)
+    style_guideline = ""
+
+    if user_profile:
+        style = user_profile.get("interaction_style", {})
+        memory = user_profile.get("memory", {})
+        role = user_profile.get("profile", {}).get("role")
+        
+        if style.get("verbosity_preference") == 'brief':
+            style_guideline = "\nCRITICAL STYLE INSTRUCTION: The user prefers brief, to-the-point, schematic responses. Provide only the most essential information."
+
+        key_facts = memory.get("key_facts", [])
+        for fact_str in key_facts:
+            if '=' in fact_str:
+                key, value = [x.strip() for x in fact_str.split('=', 1)]
+                if key == 'answer_length_limit':
+                    try:
+                        limit = int(value)
+                        style_guideline = f"\nCRITICAL, UNBREAKABLE RULE: Your response MUST NOT exceed {limit} characters in total. Be extremely concise."
+                        break
+                    except ValueError:
+                        pass
+            
+            fact_lower = fact_str.lower()
+            if "short" in fact_lower or "schematic" in fact_lower or "brief" in fact_lower:
+                style_guideline = "\nCRITICAL STYLE INSTRUCTION: The user has explicitly requested short and schematic responses. Be as concise as possible. Use bullet points for status reports."
+
+        if role == "Commander" and style_guideline:
+            style_guideline += " When asked for a 'status', you MUST ONLY report anomalies or critical values (e.g., low battery, tank levels below 25%, plant issues). If everything is normal, simply state 'All systems nominal.'"
+
     return f"""
 {persona}
+{style_guideline}
+
 Answer the user's LATEST question. Use the RECENT CONVERSATION HISTORY to avoid repeating information.
 Use your general knowledge combined with the provided context to provide a helpful and relevant response.
 CRITICAL: Do not start your response with your name or any prefix like 'SERRA:'. Just provide the response directly.
@@ -169,12 +222,16 @@ class LLMManager:
             prompt = _generate_intent_parsing_prompt(user_profile, context)
             messages = [{"role": "system", "content": prompt}]
             full_context_str = _build_context_string(context, history)
-            messages.append({"role": "user", "content": f"{full_context_str}\n\nUser Request: '{user_input}'"})
+            
+            sanitized_input = user_input.replace("'", "\\'").replace('"', '\\"')
+            messages.append({"role": "user", "content": f"{full_context_str}\n\nUser Request: '{sanitized_input}'"})
             
             chat_completion = self.client.chat.completions.create(
-                messages=messages, model="llama-3.1-8b-instant", temperature=0.0, max_tokens=300,
+                messages=messages, model="llama-3.1-8b-instant", temperature=0.0, max_tokens=512,
             )
-            return json.loads(chat_completion.choices[0].message.content.strip())
+            result = json.loads(chat_completion.choices[0].message.content.strip())
+            result['original_request'] = user_input
+            return result
         except TimeoutException as e:
             rospy.logerr(str(e))
             return {"intent": "error", "reason": "Intent parsing timed out."}
@@ -185,21 +242,24 @@ class LLMManager:
     @with_timeout(15)
     def get_recommendation(self, system_context, user_goal="", user_profile=None, history=None):
         try:
-            if not self.client: return "TASK: none\nREASON: Recommendation system offline."
+            if not self.client: return '{"task": null, "reason": "Recommendation system offline."}'
             prompt = _generate_recommendation_prompt(user_profile)
             full_context_str = _build_context_string(history=history)
-            prompt_with_context = (f"{full_context_str}\n\nUser Goal: \"{user_goal}\"\n\n" f"Current System Context: {system_context}")
+            
+            sanitized_goal = user_goal.replace("'", "\\'").replace('"', '\\"')
+            prompt_with_context = (f"{full_context_str}\n\nUser Goal: \"{sanitized_goal}\"\n\n" f"Current System Context: {system_context}")
+            
             chat_completion = self.client.chat.completions.create(
                 messages=[{"role": "system", "content": prompt}, {"role": "user", "content": prompt_with_context}],
-                model="llama-3.1-8b-instant", temperature=0.2, max_tokens=250,
+                model="llama-3.1-8b-instant", temperature=0.2, max_tokens=300,
             )
             return chat_completion.choices[0].message.content
         except TimeoutException as e:
             rospy.logerr(str(e))
-            return "TASK: none\nREASON: Recommendation generation timed out."
+            return '{"task": null, "reason": "Recommendation generation timed out."}'
         except Exception as e:
             rospy.logerr(f"Error calling Groq API for recommendation: {e}")
-            return "TASK: none\nREASON: Error formulating recommendation."
+            return '{"task": null, "reason": "Error formulating recommendation."}'
 
     @with_timeout(15)
     def get_conversational_response(self, user_question, context, user_profile=None, history=None):
@@ -207,7 +267,10 @@ class LLMManager:
             if not self.client: return "Conversational system offline."
             prompt = _generate_conversational_prompt(user_profile)
             full_context_str = _build_context_string(history=history)
-            full_prompt = f"{full_context_str}\n\nData Context:\n{json.dumps(context, indent=2)}\n\nBased on all the above, answer the user's question: '{user_question}'"
+
+            sanitized_question = user_question.replace("'", "\\'").replace('"', '\\"')
+            full_prompt = f"{full_context_str}\n\nData Context:\n{json.dumps(context, indent=2)}\n\nBased on all the above, answer the user's question: '{sanitized_question}'"
+            
             chat_completion = self.client.chat.completions.create(
                 messages=[{"role": "system", "content": prompt}, {"role": "user", "content": full_prompt}],
                 model="llama-3.1-8b-instant", temperature=0.7, max_tokens=512,
@@ -222,21 +285,19 @@ class LLMManager:
         
     @with_timeout(15)
     def get_session_summary(self, history: deque):
-        """Genera un breve riassunto di una conversazione."""
-        if not self.client or len(history) < 3: # Non riassumere conversazioni troppo brevi
+        if not self.client or len(history) < 3:
             return None
-
         history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
         
         prompt = (
             "You are a summarization assistant. Your task is to summarize the following conversation "
-            "from the user's perspective in one short, past-tense sentence. "
-            "Focus only on the main tasks performed or key information discussed. "
+            "from the USER's perspective in one short, past-tense sentence. "
+            "The summary MUST start with 'I' followed by a past-tense verb. "
+            "Focus only on the main tasks the user performed or key information they discussed. "
             "For example, if the user checked the status and watered a plant, a good summary is: "
-            "'checked the plant status and then watered the lemon tree'. "
+            "'I checked the plant status and then watered the lemon tree'. "
             "If the user asked to be called by a new name, a good summary is: "
-            "'updated my preferred name'. "
-            "Be concise and start the sentence with a verb."
+            "'I updated my preferred name'. "
         )
 
         try:
@@ -250,6 +311,9 @@ class LLMManager:
                 max_tokens=100,
             )
             summary = chat_completion.choices[0].message.content.strip().strip('"')
+            if not summary.lower().startswith("i "):
+                summary = "I " + summary[0].lower() + summary[1:]
+
             return summary
         except TimeoutException as e:
             rospy.logerr(str(e))

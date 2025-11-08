@@ -1,5 +1,6 @@
 # whisper_manager.py
-# FINAL, ROBUST VERSION using the proven callback-based audio stream logic.
+# DEFINITIVE VERSION with forced audio subsystem re-initialization.
+# This is designed to combat stubborn environmental hardware locks.
 
 import rospy
 import sounddevice as sd
@@ -9,14 +10,9 @@ import threading
 
 class WhisperManager:
     def __init__(self, model_size="base"):
-        """
-        Initializes the WhisperManager using faster-whisper and a robust,
-        callback-based audio stream to prevent hardware lock issues.
-        """
-        rospy.loginfo("Initializing WhisperManager (Robust Callback Edition)...")
+        rospy.loginfo("Initializing WhisperManager (Forced Reset Edition)...")
         rospy.loginfo(f"Loading faster-whisper model '{model_size}'...")
         try:
-            # "base" is a great balance of speed and accuracy.
             self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
             rospy.loginfo("Faster-whisper model loaded successfully.")
         except Exception as e:
@@ -28,63 +24,74 @@ class WhisperManager:
         self.is_recording = False
         self.recorded_frames = []
         self.stream = None
-        self.lock = threading.Lock() # To prevent race conditions
+        self.lock = threading.Lock()
 
     def _audio_callback(self, indata, frames, time, status):
-        """This function is called by a separate thread for each new audio chunk."""
         if status:
             rospy.logwarn(f'Sounddevice status: {status}')
         if self.is_recording:
             self.recorded_frames.append(indata.copy())
 
-    def listen_for_command(self, duration=5):
-        """
-        Orchestrates the recording and transcription using a reliable callback stream.
-        This function blocks for the duration of the recording.
-        """
-        if not self.model:
-            rospy.logerr("Cannot listen, whisper model not loaded.")
-            return "Whisper model is not available."
-
+    def start_listening(self):
         with self.lock:
             if self.is_recording:
-                rospy.logwarn("Already recording. Request ignored.")
-                return ""
+                rospy.logwarn("Start listening called when already recording.")
+                return False
+            
+            # --- THE DEFINITIVE FIX: FORCE AUDIO SUBSYSTEM RESET ---
+            try:
+                rospy.loginfo("Forcing audio subsystem reset...")
+                sd._terminate() # Completely release all audio devices.
+                sd._initialize() # Re-scan and re-initialize all audio devices.
+                rospy.loginfo("Audio subsystem has been reset.")
+            except Exception as e:
+                rospy.logerr(f"Failed during audio subsystem reset: {e}")
+                # This is a critical failure, we cannot proceed.
+                return False
+            # --- END OF FIX ---
 
+            rospy.loginfo("Starting audio recording stream...")
             self.recorded_frames = []
             self.is_recording = True
-        
-        rospy.loginfo(f"Recording for {duration} seconds...")
+            try:
+                self.stream = sd.InputStream(
+                    samplerate=self.samplerate,
+                    channels=self.channels,
+                    callback=self._audio_callback,
+                    dtype='float32',
+                    device=0 # IMPORTANT: Ensure this is your correct microphone index!
+                )
+                self.stream.start()
+                rospy.loginfo("Stream started. Now listening...")
+                return True
+            except Exception as e:
+                rospy.logerr(f"Failed to start audio stream after reset: {e}")
+                self.is_recording = False
+                return False
 
-        try:
-            # The stream is created and started here
-            self.stream = sd.InputStream(
-                samplerate=self.samplerate,
-                channels=self.channels,
-                callback=self._audio_callback,
-                dtype='float32',
-                device=0 # IMPORTANT: Ensure this is your correct microphone index!
-            )
-            self.stream.start()
+    def stop_listening_and_transcribe(self):
+        with self.lock:
+            if not self.is_recording:
+                # This case is now normal if the start failed, so we don't need a warning.
+                return ""
             
-            # Wait for the specified duration
-            rospy.sleep(duration)
-
-        finally:
-            # This block guarantees that the stream is stopped and closed
+            rospy.loginfo("Stopping audio recording stream...")
             if self.stream:
                 self.stream.stop()
                 self.stream.close()
                 self.stream = None
             self.is_recording = False
-            rospy.loginfo("Recording finished and stream closed.")
+            rospy.loginfo("Stream stopped and closed.")
 
-        # --- Process and Transcribe the collected audio frames ---
-        with self.lock:
             if not self.recorded_frames:
                 rospy.logwarn("No audio frames were recorded.")
                 return ""
+            
             recording_data = np.concatenate(self.recorded_frames, axis=0)
+
+        if np.max(np.abs(recording_data)) < 0.01:
+            rospy.logwarn("Audio signal appears to be silent. Skipping transcription.")
+            return ""
 
         rospy.loginfo("Transcribing audio from memory...")
         try:
@@ -97,8 +104,9 @@ class WhisperManager:
             return ""
 
     def shutdown(self):
-        """A cleanup method to ensure the stream is stopped if the app closes unexpectedly."""
         rospy.loginfo("WhisperManager shutting down.")
         if self.stream:
             self.stream.stop()
             self.stream.close()
+        # Ensure the audio subsystem is terminated on final shutdown
+        sd._terminate()
