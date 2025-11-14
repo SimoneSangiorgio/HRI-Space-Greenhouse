@@ -18,6 +18,8 @@ from play_motion_msgs.msg import PlayMotionAction, PlayMotionGoal
 
 from kg_manager import KnowledgeGraphManager
 from llm_manager import LLMManager, ALL_TASKS_LIST, TASKS_ROBOT_GREENHOUSE
+from speech_manager import SpeechManager ###############à
+from whisper_manager import WhisperManager ############
 
 class MainRobotController:
     def __init__(self):
@@ -49,7 +51,10 @@ class MainRobotController:
         
         self.console_lock = threading.Lock()
 
-        self.CONVERSATIONAL_INTENTS = ["greeting", "farewell", "small_talk", "contextual_question", "general_query"]
+        self.CONVERSATIONAL_INTENTS = ["greeting", "farewell", "small_talk", "contextual_question"]#, "general_query"]
+
+        self.speaker = SpeechManager()  #############
+        self.listener = WhisperManager(model_size="base")  #########
 
         self.task_handlers = {
             "execute_task_sequence": self.handle_execute_task_sequence,
@@ -99,17 +104,34 @@ class MainRobotController:
     
     def say_and_print(self, message, is_robot_response=False):
         with self.console_lock:
-            print(message)
+            prefix = "SERRA: " if is_robot_response else "" #######
+            print(f"{prefix}{message}") ############
+            self.speaker.say(message) ##########
+            #print(message)
         if is_robot_response:
             self.conversation_history.append({"role": "assistant", "content": message})
 
     def get_confirmation(self, prompt):
-        with self.console_lock:
+
+        '''with self.console_lock:
             print(prompt)
             if not rospy.is_shutdown():
                 response = input("> ").lower().strip()
             else:
-                response = "no"
+                response = "no"'''
+        
+        self.say_and_print(prompt, is_robot_response=True)  #####
+
+        try: #####
+            input(">> Press Enter to START speaking your answer (yes/no)...")##########à
+            self.listener.start_listening()######
+            input("   ...Recording... Press Enter to STOP.")#######
+            response = self.listener.stop_listening_and_transcribe().lower().strip()######
+            print(f"\n{self.current_user_id} (heard) > {response}")#######
+        except (EOFError, KeyboardInterrupt):#########
+            rospy.loginfo("Exit signal received during confirmation.")###########à
+            response = "no"#############        
+
         self.conversation_history.append({"role": "assistant", "content": prompt})
         self.conversation_history.append({"role": "user", "content": response})
         return response in ['yes', 'y', 'ok', 'sure', 'fine', 'confirm', 'go ahead']
@@ -203,11 +225,26 @@ class MainRobotController:
                 time.sleep(0.5)
                 continue
             
-            with self.console_lock:
+            '''with self.console_lock:
                 try:
                     user_command_text = input(f"{self.current_user_id} > ")
                 except (EOFError, KeyboardInterrupt):
-                    user_command_text = "exit"
+                    user_command_text = "exit"'''
+            
+            self.say_and_print(f"Awaiting your command, {self.current_user_profile['name_from_id']}.", is_robot_response=True)###########
+            
+            try:##########à
+                input(">> Press Enter to START speaking...")#########
+                self.listener.start_listening()############
+                
+                input("   ...Recording... Press Enter to STOP.")########
+                user_command_text = self.listener.stop_listening_and_transcribe()#########à
+
+                print(f"\n{self.current_user_id} (heard) > {user_command_text}")####
+
+            except (EOFError, KeyboardInterrupt):#####
+                rospy.loginfo("Exit signal received during prompt.")#####
+                user_command_text = "exit"#######           
             
             self.conversation_history.append({"role": "user", "content": user_command_text})
             
@@ -273,8 +310,19 @@ class MainRobotController:
             rospy.loginfo(f"Final parsed command: {parsed_command}")
             self.execute_command(parsed_command)
 
+
     def _plan_task_from_model(self, command, task_model):
+        # Prima cerca la chiave singolare 'target'
         target = command.get("target")
+        
+        # Se non la trova, cerca la chiave plurale 'targets' (che è una lista)
+        if not target:
+            targets_list = command.get("targets")
+            # Se la lista esiste e non è vuota, prendi il primo elemento come target
+            if targets_list:
+                target = targets_list[0]
+
+        # Ora controlla se, dopo entrambi i tentativi, abbiamo un target valido
         if not target:
             self.say_and_print(f"Error: The task '{command.get('intent')}' requires a target, but none was provided.", is_robot_response=True)
             return None
@@ -666,8 +714,23 @@ class MainRobotController:
         return True
 
 if __name__ == '__main__':
-    try:
+    '''try:
         MainRobotController().run()
     except (rospy.ROSInterruptException, KeyboardInterrupt):
         rospy.loginfo("Shutting down controller.")
-        pass
+        pass'''
+    controller = None####à
+    try:########
+        controller = MainRobotController()###########
+        controller.run()##########
+    except (rospy.ROSInterruptException, KeyboardInterrupt):#######
+        rospy.loginfo("Shutdown signal received.")#######
+    finally:########à
+        rospy.loginfo("Initiating final shutdown sequence...")############
+        if controller:########
+            if controller.listener:###########
+                controller.listener.shutdown()#########à
+            if controller.kg:###########
+                rospy.loginfo("Saving final knowledge graph state...")###########
+                controller.kg.save_kg()#########
+        rospy.loginfo("Controller has been shut down.")##########
