@@ -126,7 +126,7 @@ class MainRobotController:
             input(">> Press Enter to START speaking your answer (yes/no)...")##########à
             self.listener.start_listening()######
             input("   ...Recording... Press Enter to STOP.")#######
-            response = self.listener.stop_listening_and_transcribe().lower().strip()######
+            response = self.listener.stop_listening_and_transcribe().lower().strip().strip('.,!?')######
             print(f"\n{self.current_user_id} (heard) > {response}")#######
         except (EOFError, KeyboardInterrupt):#########
             rospy.loginfo("Exit signal received during confirmation.")###########à
@@ -248,11 +248,13 @@ class MainRobotController:
             
             self.conversation_history.append({"role": "user", "content": user_command_text})
             
-            user_command_lower = user_command_text.lower().strip()
-            exit_keywords = ["exit", "quit", "end session"]
+            user_command_lower = user_command_text.lower().strip().strip('.,!?')
+            exit_keywords = ["exit", "quit", "end session", "done", "stop"]
             
-            if user_command_lower == "done" or any(keyword in user_command_lower for keyword in exit_keywords):
+            if any(keyword in user_command_lower for keyword in exit_keywords):
                 self.handle_stop_task({})
+                if self.conversation_history and self.conversation_history[-1]["role"] == "user":
+                    self.conversation_history.pop()
                 self.say_and_print("Summarizing session...", is_robot_response=False)
                 summary = self.llm.get_session_summary(self.conversation_history)
                 if summary: self.kg.update_session_summary(self.current_user_id, summary)
@@ -519,7 +521,8 @@ class MainRobotController:
             if not handler:
                 rospy.logwarn(f"No handler found for intent '{intent}' in sequence. Skipping.")
                 continue
-            self.say_and_print(f"--- Sequence Step {i+1}/{len(task_list)}: Executing '{intent}' ---", is_robot_response=True)
+            #self.say_and_print(f"--- Sequence Step {i+1}/{len(task_list)}: Executing '{intent}' ---", is_robot_response=True)
+            rospy.loginfo(f"--- Sequence Step {i+1}/{len(task_list)}: Executing '{intent}' ---")
             task_success = handler(task_command)
             if not task_success:
                 self.say_and_print(f"A step in the sequence failed. Aborting the sequence.", is_robot_response=True)
