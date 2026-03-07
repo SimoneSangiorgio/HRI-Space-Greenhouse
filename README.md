@@ -1,7 +1,6 @@
-# HRI-Space-Greenhouse
+# SERRA-Socially-Intelligent-Greenhouse-Robot
 
-The project integrates principles of
-Human-Robot Interaction (HRI) and Behavior-Based Robotics (BBR) to create a system embodied
+The project integrates principles of Human-Robot Interaction (HRI) and Behavior-Based Robotics (BBR) to create a system embodied
 by a TIAGo robot within the Robot Operating System (ROS) framework. SERRA leverages a Large
 Language Model (LLM) for advanced natural language understanding and dialogue management,
 a persistent Knowledge Graph (KG) for short and long-term memory and world modeling, and a
